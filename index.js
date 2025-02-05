@@ -54,26 +54,31 @@ app.get("/api/persons/:id", (request, response, next) => {
     .catch((error) => next(error));
 });
 
-app.post("/api/persons", (request, response) => {
+app.post("/api/persons", (request, response, next) => {
   const body = request.body;
   console.log("body", body);
 
   if (!body.name || !body.number) {
-    return response.status(400).json({ error: "Name Missing" });
+    return response.status(400).json({ error: "Name or number missing" });
   }
 
-  if (Person.findOne({ name: body.name })) {
-    return response.status(409).json({ error: "name must be unique" });
-  }
+  Person.findOne({ name: body.name })
+    .then((existingPerson) => {
+      if (existingPerson) {
+        return response.status(409).json({ error: "Name must be unique" });
+      }
 
-  const person = new Person({
-    name: body.name,
-    number: body.number,
-  });
+      const person = new Person({
+        name: body.name,
+        number: body.number,
+      });
 
-  person.save().then((savedperson) => {
-    response.json(savedperson);
-  });
+      person
+        .save()
+        .then((savedPerson) => response.json(savedPerson))
+        .catch((error) => next(error));
+    })
+    .catch((error) => next(error));
 });
 
 app.delete("/api/persons/:id", (request, response, next) => {
@@ -95,7 +100,11 @@ app.put("/api/persons/:id", (request, response, next) => {
     number: body.number,
   };
 
-  Person.findByIdAndUpdate(request.params.id, person, { new: true })
+  Person.findByIdAndUpdate(request.params.id, person, {
+    new: true,
+    runValidators: true,
+    context: "query",
+  })
     .then((updatedPerson) => {
       response.json(updatedPerson);
     })
@@ -124,6 +133,8 @@ const errorHandler = (error, request, response, next) => {
 
   if (error.name === "CastError") {
     return response.status(400).send({ error: "malformatted id" });
+  } else if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
   }
 
   next(error);
